@@ -24,10 +24,9 @@ get_calc_err_msg(int err)
 size_t 
 get_token_string_length(const char *token_string) 
 {
-  size_t max_parse_len    = 1024;
   size_t token_string_len = 0;
-  while ((token_string_len < max_parse_len) 
-  && (token_string[token_string_len] != '\0'))
+  while ( (token_string_len < CALC_MAX_EXPRESSION_LENGTH)
+    && (token_string[token_string_len] != '\0') )
   {
     ++token_string_len;
   }
@@ -52,7 +51,7 @@ size_t
 normalize_calc_input(const char *token_string, char **tokens_out)
 {
   if ( !token_string ) {
-    fprintf(stderr, "invalid tokens array\r\n");
+    fprintf(stderr, "invalid tokens\r\n");
     return 0;
   }
 
@@ -336,27 +335,30 @@ evaluate_postfix(const char *postfix)
 void 
 evaluate_expression(const char *input)
 {
-  char *result;
-  normalize_calc_input(input, &result);
-  fprintf(stdout, "input: %s\r\n", result);
+  char *expression;
+  size_t expression_len = normalize_calc_input(input, &expression);
+  if (expression_len == 0) {
+    fprintf(stderr, "Unable to validate input.\r\n");
+    return;
+  }
+  fprintf(stdout, "input normalized to: %s\r\n", expression);
   
   char postfix[CALC_MAX_EXPRESSION_LENGTH];
-  infix_to_postfix(result, postfix);
+  infix_to_postfix(expression, postfix);
 
   size_t postfix_len = strlen(postfix);
   if (postfix_len == 0) {
-    fprintf(stdout, "failed to get postfix from shunting yard\r\n");
-    free(result);
+    fprintf(stderr, "failed to get postfix from shunting yard\r\n");
+    free(expression);
     return;
   }
-  fprintf(stdout, "postfix shunting yard (%d): %s\r\n", (int)postfix_len, postfix);
+  fprintf(stdout, "postfix shunting yard: %s\r\n", postfix);
   
   float calc_result = evaluate_postfix(postfix);
-
   fprintf(stdout, "result: %f\r\n", calc_result);
   fprintf(stdout, "\r\n");
   
-  free(result);
+  free(expression);
 }
 
 
