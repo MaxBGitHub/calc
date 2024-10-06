@@ -1,8 +1,10 @@
-#include "calc.h"
-#include <string.h>
-#include <ctype.h>
 #include <stdlib.h>
 
+#include "calc.h"
+
+
+const size_t FLOAT_BUFFER_SIZE  = 32;
+const char CHAR_SPACE           = 0x20;
 
 const char * 
 get_calc_err_msg(int err)
@@ -21,63 +23,25 @@ get_calc_err_msg(int err)
 }
 
 
-size_t 
-get_token_string_length(const char *token_string) 
-{
-  size_t token_string_len = 0;
-  while ( (token_string_len < CALC_MAX_EXPRESSION_LENGTH)
-    && (token_string[token_string_len] != '\0') )
-  {
-    ++token_string_len;
-  }
-  return token_string_len;
-}
-
-
 size_t
-get_token_count(const char *token_string, size_t token_string_len) 
-{
-  size_t token_count = 0;
-  for (size_t i = 0; i < token_string_len; i++) {
-    if (is_math_token(token_string[i])) {
-      ++token_count;
-    }
-  }  
-  return token_count;
-}
-
-
-size_t
-normalize_calc_input(const char *token_string, char **tokens_out)
+normalize_calc_input(
+  const char *token_string, 
+  char tokens_out[CALC_MAX_EXPRESSION_LENGTH])
 {
   if ( !token_string ) {
-    fprintf(stderr, "invalid tokens\r\n");
     return 0;
   }
-
-  size_t token_string_len = get_token_string_length(token_string);
-  size_t token_count = get_token_count(token_string, token_string_len);
-
-  int token_positions[token_count];
-  int n = 0;
-  for (size_t i = 0; i < token_string_len; i++) {
+  
+  size_t n = 0;
+  for (size_t i = 0; (i < CALC_MAX_EXPRESSION_LENGTH - 1) 
+    && (token_string[i] != '\0'); ++i) 
+  {
     if (is_math_token(token_string[i])) {
-      token_positions[n++] = i;
+      tokens_out[n++] = token_string[i];
     }
   }
-
-  size_t token_out_len = 1 + token_count;
-  *tokens_out = (char *)calloc(token_out_len, sizeof(char));
-  if (!(*tokens_out)) {
-    return 0;
-  }
-  
-  for (size_t i = 0; i < token_count; i++) {
-    (*tokens_out)[i] = token_string[token_positions[i]];
-  }  
-  (*tokens_out)[token_out_len] = '\0';
-  
-  return token_out_len;
+  tokens_out[n] = '\0';
+  return n;
 }
 
 
@@ -166,36 +130,38 @@ infix_to_postfix(const char *infix, char *postfix)
 {
   char_stack_t operators = { .top = -1 }  ;
   int i = 0;
-  int n = 0;
-
-  const int float_buffer_size = 32;
-  const char space = 0x20;
+  int n = 0;  
 
   while (infix[i] != '\0') {
     // Extract possible floating point number.
     if (is_digit_or_floating_point(infix[i])) {
-      char num_buffer[float_buffer_size];
-      int num_index = 0;
-      while ( (num_index < float_buffer_size)
+      char num_buffer[FLOAT_BUFFER_SIZE];
+      size_t num_index = 0;
+      while ( (num_index < FLOAT_BUFFER_SIZE)
         && is_digit_or_floating_point(infix[i])) 
       {
         num_buffer[num_index++] = infix[i++];        
       }
       num_buffer[num_index] = '\0';
       // Write number to output.
-      for (int j = 0; j < num_index; j++) {
-        postfix[n++] = num_buffer[j];
+      for (size_t j = 0; j < num_index; j++) {
+        if (n < CALC_MAX_EXPRESSION_LENGTH - 1) {
+          postfix[n++] = num_buffer[j];  
+        }        
       }
-      postfix[n++] = space;
+      postfix[n++] = CHAR_SPACE;
     }
     else if (infix[i] == '(') {
       char_stack_push(&operators, infix[i]);
       i++;
     }
     else if (infix[i] == ')') {
-      while (!char_stack_is_empty(&operators) && char_stack_peek(&operators) != '(') {
+      while (!char_stack_is_empty(&operators) 
+        && (char_stack_peek(&operators) != '(')
+        && (n <= CALC_MAX_EXPRESSION_LENGTH - 2)) 
+      {
         postfix[n++] = char_stack_pop(&operators);
-        postfix[n++] = space;
+        postfix[n++] = CHAR_SPACE;
       }
       char_stack_pop(&operators);
       i++;
@@ -214,24 +180,28 @@ infix_to_postfix(const char *infix, char *postfix)
         int equal_not_right_prec  = (top_precedence == cur_precedence 
                                     && !is_cur_right_assoc);
 
-        if (is_higher_precedence || equal_not_right_prec) {
+        if ((is_higher_precedence || equal_not_right_prec) 
+          && (n <= CALC_MAX_EXPRESSION_LENGTH - 2)) 
+        {
           postfix[n++] = char_stack_pop(&operators);
-          postfix[n++] = space;
+          postfix[n++] = CHAR_SPACE;
         }
         else {
           break;
-        }        
+        }
       }
       char_stack_push(&operators, infix[i]);
       i++;
     }
   }
 
-  while (!char_stack_is_empty(&operators)) {
+  while (!char_stack_is_empty(&operators) 
+    && (n <= CALC_MAX_EXPRESSION_LENGTH - 2)) 
+  {
     postfix[n++] = char_stack_pop(&operators);
-    postfix[n++] = space;
+    postfix[n++] = CHAR_SPACE;
   }
-  postfix[n++] = '\0';
+  postfix[n] = '\0';
 }
 
 
@@ -309,15 +279,15 @@ evaluate_postfix(const char *postfix)
   int i = 0;
 
   while (postfix[i] != '\0') {
-    if (postfix[i] == 0x20) {
+    if (postfix[i] == CHAR_SPACE) {
       i++;
       continue;
     }
 
     if (is_digit_or_floating_point(postfix[i])) {
-      char num_str[32];
-      int n = 0;
-      while (n < 32 && is_digit_or_floating_point(postfix[i])) {
+      char num_str[FLOAT_BUFFER_SIZE];
+      size_t n = 0;
+      while (n < FLOAT_BUFFER_SIZE && is_digit_or_floating_point(postfix[i])) {
         num_str[n++] = postfix[i++];
       }
       num_str[n] = '\0';
@@ -333,42 +303,65 @@ evaluate_postfix(const char *postfix)
 
 
 void 
-evaluate_expression(const char *input)
+evaluate_input(const char *input)
 {
-  char *expression;
-  size_t expression_len = normalize_calc_input(input, &expression);
-  if (expression_len == 0) {
-    fprintf(stderr, "Unable to validate input.\r\n");
+  if ( !input ) {
+    fprintf(stderr, "Input cannot be null.\r\n");
     return;
   }
-  fprintf(stdout, "input normalized to: %s\r\n", expression);
+
+  size_t input_length = 0;
+  while (input[input_length] != '\0') {
+    if (input_length + 1 > CALC_MAX_EXPRESSION_LENGTH) {
+      fprintf(stderr, "Input is larger then CALC_MAX_EXPRESSION_LENGTH.\r\n");
+      return;
+    }
+    ++input_length;
+  }
+
+  char expression[CALC_MAX_EXPRESSION_LENGTH];
+  size_t expression_len = normalize_calc_input(input, expression);
+  if (expression_len == 0 || expression_len > CALC_MAX_EXPRESSION_LENGTH) {
+    fprintf(stderr, "Unable to validate input or input too large.\r\n");
+    return;
+  }
+  fprintf(stdout, "Input normalized to: %s\r\n", expression);
   
-  char postfix[CALC_MAX_EXPRESSION_LENGTH];
+  char postfix[CALC_MAX_EXPRESSION_LENGTH] = {0};
   infix_to_postfix(expression, postfix);
 
-  size_t postfix_len = strlen(postfix);
-  if (postfix_len == 0) {
-    fprintf(stderr, "failed to get postfix from shunting yard\r\n");
-    free(expression);
+  size_t postfix_len = 0;
+  while (postfix_len < CALC_MAX_EXPRESSION_LENGTH
+    && postfix[postfix_len] != '\0') 
+  {
+    ++postfix_len;
+  }
+  
+  if (postfix_len == 0) {  
+    fprintf(stderr, "Failed to get postfix from shunting yard\r\n");
     return;
   }
-  fprintf(stdout, "postfix shunting yard: %s\r\n", postfix);
+  fprintf(stdout, "Postfix shunting yard: %s\r\n", postfix);
   
   float calc_result = evaluate_postfix(postfix);
-  fprintf(stdout, "result: %f\r\n", calc_result);
   fprintf(stdout, "\r\n");
-  
-  free(expression);
+  fprintf(stdout, "Result: %f\r\n", calc_result);
+  fprintf(stdout, "\r\n");
 }
 
 
 void 
 print_help(void)
 {
-  char *out_buffer = (char *)malloc(80 * sizeof(char));
-  memset(out_buffer, '=', 80 * sizeof(char));
+  const size_t MAX_LINE_LENGTH = 80;
+  char out_buffer[MAX_LINE_LENGTH];
+  for (size_t i = 0; i < MAX_LINE_LENGTH - 1; i++) {
+    out_buffer[i] = '=';
+  }
+  out_buffer[MAX_LINE_LENGTH - 1] = '\0';
+  
   fprintf(stdout, "%s\r\n", out_buffer);
-  fprintf(stdout, "\t\tSimple calculator by Max Bader (services.bader@gmail.com)\r\n");
+  fprintf(stdout, "\tSimple calculator by Max Bader @MaxBGitHub (services.bader@gmail.com)\r\n");
   fprintf(stdout, "\t\t Available operators are:\r\n");
   fprintf(stdout, "\t\t\t%c        - Add (a + b)\r\n", TOKEN_PLUS);
   fprintf(stdout, "\t\t\t%c        - Subtract (a - b)\r\n", TOKEN_MINUS);
@@ -380,39 +373,41 @@ print_help(void)
   fprintf(stdout, "\t\t\t%c        - Square root of (|a)\r\n", TOKEN_ROOT);
   fprintf(stdout, "\t\t\t%c        - Start group\r\n", TOKEN_BRACKET_OPEN);
   fprintf(stdout, "\t\t\t%c        - End group\r\n", TOKEN_BRACKET_CLOSE);
-  fprintf(stdout, "%s\r\n", out_buffer);
+  fprintf(stdout, "\t\tExample:\r\n");
+  fprintf(stdout, "\t\t\t(3^2 + 5) * |16/4 - 2\r\n");
+  fprintf(stdout, "\r\n");
+  fprintf(stdout, "%s\r\n", out_buffer);  
 }
 
 
 int 
 main(void) 
 {
-  //evaluate_expression("|((((3^3) * 9.0) - 10 + 2) / 3.2493)");
-  //evaluate_expression("3^2 * 4");
-  //evaluate_expression("10 + 5 - 8 / 2");
-  //evaluate_expression("|25 + 18 % 4");
-  //evaluate_expression("6*(9 % 5)");
-  //evaluate_expression("(4^3) / 8 - 5");
-  //evaluate_expression("|(2^4) * 5");
-  //evaluate_expression("(3^2 + 5) * |16/4 - 2");
-
   print_help();
 
   char input[CALC_MAX_EXPRESSION_LENGTH];
   fprintf(stdout, "Enter equation: ");
 
   fgets(input, sizeof(input), stdin);
+  fprintf(stdout, "\r\n");
 
-  size_t input_len = strlen(input);
-  if (input[0] == '\0' || input[0] == '\n') {
-    fprintf(stdout, "no valid input...\r\n");
-    exit(0);
+  size_t input_len = 0;
+  while (input_len < CALC_MAX_EXPRESSION_LENGTH
+    && input[input_len] != '\0'
+    && input[input_len] != '\n')
+  {
+    ++input_len;
+  }
+  if (input_len == 0) {
+    fprintf(stderr, "no valid input...\r\n");
+    exit(1);
   }
   
   if (input_len > 0 && input[input_len - 1] == '\n') {
     input[input_len - 1] = '\0';
   }  
-  evaluate_expression(input);
-   
+
+  evaluate_input(input);
+  
   return 0;
 }

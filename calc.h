@@ -1,15 +1,25 @@
 #ifndef _CALC_H
 #define _CALC_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stddef.h>
+#include <float.h>
 
 
+// Used in Netwon's method for approximating the square root.
 #define CALC_HALF 0.5f
 
-#define CALC_MAX_EXPRESSION_LENGTH  1024
-#define CALC_MAX_STACK_SIZE         1024
+// Maximum length of math expression can be 1024 chars.
+// This is not a tested or best what ever value.
+// This has been chosen arbitrarily.
+#define CALC_MAX_EXPRESSION_LENGTH  0x400
+// Maximum size of stacks should be no more then twice the 
+// expression size itself. The expression inflix is
+// converted to a postfix and padded with spaces.
+// Any shunting yard postfix stack should thus never be
+// able to exceed the maximum expression size limit * 2.
+#define CALC_MAX_STACK_SIZE         (2 * CALC_MAX_EXPRESSION_LENGTH)
 
 #define CALC_ERR_SUCCESS          0
 #define CALC_ERR_DIVIDE_BY_ZERO   1
@@ -62,9 +72,7 @@ int float_stack_is_empty(float_stack_t *stack);
 //  Input validation and normalization.
 // ============================================================================
 
-size_t get_token_string_length(const char *token_string);
-size_t get_token_count(const char *token_string, size_t token_string_len);
-size_t normalize_calc_input(const char *input, char **tokens_out);
+size_t normalize_calc_input(const char *input, char tokens_out[CALC_MAX_EXPRESSION_LENGTH]);
 
 void infix_to_postfix(const char *infix, char *postfix);
 void evaluate_input(const char* input);
@@ -281,10 +289,12 @@ powerof_f(float base, float exponent, float *result)
 }
 
 
+//
+// Newton's method for root-finding.
+//
 static inline int
 sqrtof_f(float x, float *result) 
 {
-  // Newton's square root.
   if (x < 0.0f) {
     return CALC_ERR_SQRT_NEGATIVE;
   }
@@ -293,10 +303,12 @@ sqrtof_f(float x, float *result)
     *result = 0;
     return CALC_ERR_SUCCESS;
   }
+
+  float epsilon;
+  powerof_f(10.0f, -FLT_DIG, &epsilon); // Dynamic precision threshold
   
-  float cx        = x;
-  float epsilon   = 0.000001f;  // Precision threshold
-  int   max_iter  = 100;
+  float cx        = x;  
+  int   max_iter  = 16;
   int   iter      = 0;  
 
   while (iter++ < max_iter) {
