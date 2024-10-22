@@ -1,4 +1,4 @@
-# Simple calculator in written C (GNU99) - without math.h
+# Simple calculator written in C (GNU99) - without math.h
 
 - Does not use math.h
 - Implements shunting yard algorithm to convert infix math expression to postfix notation (Reverse Polish notation)
