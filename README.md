@@ -16,6 +16,7 @@
 | - | Subtract |
 | * | Multiply |
 | / | Divide |
+| % | Modulo |
 | \| | Square root of |
 | ^ | Power of |
 | ( | Start group |
